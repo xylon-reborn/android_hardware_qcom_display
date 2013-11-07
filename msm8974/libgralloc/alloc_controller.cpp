@@ -75,10 +75,10 @@ static bool canFallback(int usage, bool triedSystem)
 
 static bool useUncached(int usage)
 {
+    // System heaps cannot be uncached
+    if(usage & GRALLOC_USAGE_PRIVATE_SYSTEM_HEAP)
+        return false;
     if (usage & GRALLOC_USAGE_PRIVATE_UNCACHED)
-        return true;
-    if(((usage & GRALLOC_USAGE_SW_WRITE_MASK) == GRALLOC_USAGE_SW_WRITE_RARELY)
-       ||((usage & GRALLOC_USAGE_SW_READ_MASK) == GRALLOC_USAGE_SW_READ_RARELY))
         return true;
     return false;
 }
@@ -104,7 +104,7 @@ int AdrenoMemInfo::getStride(int width, int format)
 {
     int stride = ALIGN(width, 32);
     // Currently surface padding is only computed for RGB* surfaces.
-    if (format <= HAL_PIXEL_FORMAT_sRGB_X_8888) {
+    if (format < 0x7) {
         // Don't add any additional padding if debug.gralloc.map_fb_memory
         // is enabled
         char property[PROPERTY_VALUE_MAX];
@@ -121,6 +121,8 @@ int AdrenoMemInfo::getStride(int width, int format)
                 bpp = 3;
                 break;
             case HAL_PIXEL_FORMAT_RGB_565:
+            //case HAL_PIXEL_FORMAT_RGBA_5551:
+            //case HAL_PIXEL_FORMAT_RGBA_4444:
                 bpp = 2;
                 break;
             default: break;
@@ -145,6 +147,7 @@ int AdrenoMemInfo::getStride(int width, int format)
             case HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED:
                 stride = ALIGN(width, 128);
                 break;
+            case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
             case HAL_PIXEL_FORMAT_YCbCr_420_SP:
             case HAL_PIXEL_FORMAT_YCrCb_420_SP:
             case HAL_PIXEL_FORMAT_YV12:
@@ -153,14 +156,10 @@ int AdrenoMemInfo::getStride(int width, int format)
                 stride = ALIGN(width, 16);
                 break;
             case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
-            case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
                 stride = VENUS_Y_STRIDE(COLOR_FMT_NV12, width);
                 break;
             case HAL_PIXEL_FORMAT_BLOB:
                 stride = width;
-                break;
-            case HAL_PIXEL_FORMAT_NV21_ZSL:
-                stride = ALIGN(width, 64);
                 break;
             default: break;
         }
@@ -284,14 +283,14 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
         case HAL_PIXEL_FORMAT_RGBA_8888:
         case HAL_PIXEL_FORMAT_RGBX_8888:
         case HAL_PIXEL_FORMAT_BGRA_8888:
-        case HAL_PIXEL_FORMAT_sRGB_A_8888:
-        case HAL_PIXEL_FORMAT_sRGB_X_8888:
             size = alignedw * alignedh * 4;
             break;
         case HAL_PIXEL_FORMAT_RGB_888:
             size = alignedw * alignedh * 3;
             break;
         case HAL_PIXEL_FORMAT_RGB_565:
+        //case HAL_PIXEL_FORMAT_RGBA_5551:
+        //case HAL_PIXEL_FORMAT_RGBA_4444:
         case HAL_PIXEL_FORMAT_RAW_SENSOR:
             size = alignedw * alignedh * 2;
             break;
@@ -308,20 +307,27 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
             size  = ALIGN( alignedw * alignedh, 8192);
             size += ALIGN( alignedw * ALIGN(height/2, 32), 8192);
             break;
+        case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
         case HAL_PIXEL_FORMAT_YV12:
             if ((format == HAL_PIXEL_FORMAT_YV12) && ((width&1) || (height&1))) {
                 ALOGE("w or h is odd for the YV12 format");
                 return -EINVAL;
             }
             alignedh = height;
-            size = alignedw*alignedh +
+            if (HAL_PIXEL_FORMAT_NV12_ENCODEABLE == format) {
+                // The encoder requires a 2K aligned chroma offset.
+                size = ALIGN(alignedw*alignedh, 2048) +
                     (ALIGN(alignedw/2, 16) * (alignedh/2))*2;
+            } else {
+                size = alignedw*alignedh +
+                    (ALIGN(alignedw/2, 16) * (alignedh/2))*2;
+            }
             size = ALIGN(size, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_420_SP:
         case HAL_PIXEL_FORMAT_YCrCb_420_SP:
             alignedh = height;
-            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2 + 1, 4096);
+            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_422_SP:
         case HAL_PIXEL_FORMAT_YCrCb_422_SP:
@@ -333,7 +339,6 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
             size = ALIGN(alignedw * alignedh * 2, 4096);
             break;
         case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
-        case HAL_PIXEL_FORMAT_NV12_ENCODEABLE:
             alignedh = VENUS_Y_SCANLINES(COLOR_FMT_NV12, height);
             size = VENUS_BUFFER_SIZE(COLOR_FMT_NV12, width, height);
             break;
@@ -346,10 +351,6 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
             alignedh = height;
             alignedw = width;
             size = width;
-            break;
-        case HAL_PIXEL_FORMAT_NV21_ZSL:
-            alignedh = ALIGN(height, 64);
-            size = ALIGN((alignedw*alignedh) + (alignedw* alignedh)/2, 4096);
             break;
         default:
             ALOGE("unrecognized pixel format: 0x%x", format);

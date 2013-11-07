@@ -109,17 +109,11 @@ int gpu_context_t::gralloc_alloc_buffer(size_t size, int usage,
 #ifndef MDSS_TARGET
                 flags |= private_handle_t::PRIV_FLAGS_ITU_R_601_FR;
 #else
-                // Per the camera spec ITU 709 format should be set only for
-                // video encoding.
-                // It should be set to ITU 601 full range format for any other
-                // camera buffer
-                //
-                if (usage & GRALLOC_USAGE_HW_CAMERA_MASK) {
-                    if (usage & GRALLOC_USAGE_HW_VIDEO_ENCODER)
+                    if (usage & (GRALLOC_USAGE_HW_TEXTURE |
+                                 GRALLOC_USAGE_HW_VIDEO_ENCODER))
                         flags |= private_handle_t::PRIV_FLAGS_ITU_R_709;
-                    else
+                    else if (usage & GRALLOC_USAGE_HW_CAMERA_ZSL)
                         flags |= private_handle_t::PRIV_FLAGS_ITU_R_601_FR;
-                }
 #endif
             } else {
                 flags |= private_handle_t::PRIV_FLAGS_ITU_R_601;
@@ -169,7 +163,7 @@ void gpu_context_t::getGrallocInformationFromFormat(int inputFormat,
 {
     *bufferType = BUFFER_TYPE_VIDEO;
 
-    if (inputFormat <= HAL_PIXEL_FORMAT_sRGB_X_8888) {
+    if (inputFormat < 0x7) {
         // RGB formats
         *bufferType = BUFFER_TYPE_UI;
     } else if ((inputFormat == HAL_PIXEL_FORMAT_R_8) ||
@@ -261,13 +255,9 @@ int gpu_context_t::alloc_impl(int w, int h, int format, int usage,
 
     //If input format is HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED then based on
     //the usage bits, gralloc assigns a format.
-    if(format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED ||
-       format == HAL_PIXEL_FORMAT_YCbCr_420_888) {
+    if(format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED) {
         if(usage & GRALLOC_USAGE_HW_VIDEO_ENCODER)
             grallocFormat = HAL_PIXEL_FORMAT_NV12_ENCODEABLE; //NV12
-        else if((usage & GRALLOC_USAGE_HW_CAMERA_MASK)
-                == GRALLOC_USAGE_HW_CAMERA_ZSL)
-            grallocFormat = HAL_PIXEL_FORMAT_NV21_ZSL; //NV21 ZSL
         else if(usage & GRALLOC_USAGE_HW_CAMERA_READ)
             grallocFormat = HAL_PIXEL_FORMAT_YCrCb_420_SP; //NV21
         else if(usage & GRALLOC_USAGE_HW_CAMERA_WRITE)
