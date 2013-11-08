@@ -368,3 +368,4 @@ genlock_status_t genlock_write_to_read(native_handle_t *buffer_handle,
 #endif
     return ret;
 }
+

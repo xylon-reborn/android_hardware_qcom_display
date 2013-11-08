@@ -11,3 +11,4 @@ LOCAL_ADDITIONAL_DEPENDENCIES := $(common_deps)
 LOCAL_SRC_FILES               := genlock.cpp
 
 include $(BUILD_SHARED_LIBRARY)
+
